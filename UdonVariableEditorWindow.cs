@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -38,7 +39,7 @@ namespace UdonVarViewer
 
         private void OnGUI()
         {
-            GUILayout.Label("YASHIRIRIKA", EditorStyles.boldLabel);
+            GUILayout.Label("yzllh", EditorStyles.boldLabel);
             
             GUILayout.Space(5);
             
@@ -582,3 +583,4 @@ namespace UdonVarViewer
         }
     }
 }
+#endif
