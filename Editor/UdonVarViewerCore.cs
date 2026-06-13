@@ -190,17 +190,25 @@ namespace UdonVarViewer
         // ─── Search Utility ───────────────────────────────────────────────
         public static string HighlightText(string text, string filter)
         {
-            if (string.IsNullOrEmpty(filter) || string.IsNullOrEmpty(text)) return text;
+            if (string.IsNullOrEmpty(text)) return text;
+
+            // Prevent Unity's RichText from swallowing generics like List<int>
+            string safeText = text.Replace("<", "&lt;").Replace(">", "&gt;");
+
+            if (string.IsNullOrEmpty(filter)) return safeText;
+
+            string safeFilter = filter.Replace("<", "&lt;").Replace(">", "&gt;");
+
             try
             {
                 return System.Text.RegularExpressions.Regex.Replace(
-                    text,
-                    System.Text.RegularExpressions.Regex.Escape(filter),
+                    safeText,
+                    System.Text.RegularExpressions.Regex.Escape(safeFilter),
                     "<color=#FFFF00><b>$&</b></color>",
                     System.Text.RegularExpressions.RegexOptions.IgnoreCase
                 );
             }
-            catch { return text; }
+            catch { return safeText; }
         }
 
 
@@ -548,7 +556,8 @@ namespace UdonVarViewer
                 }
                 if (string.IsNullOrEmpty(symbolName)) return;
 
-                object value    = propValue?.GetValue(obj, null);
+                object value = propValue?.GetValue(obj, null);
+
                 Type   varType  = t.IsGenericType ? t.GetGenericArguments()[0] : typeof(object);
                 string typeName = varType.Name;
                 string valDisplay = value?.ToString() ?? "null";
@@ -561,8 +570,7 @@ namespace UdonVarViewer
                     if (value == null ||
                         value is string || value is long || value is int ||
                         value is double || value is float || value is bool || value is char ||
-                        value is Vector3 || value is Vector2 || value is Color || value is Quaternion ||
-                        varType.IsEnum)
+                        value is Vector3 || value is Vector2 || value is Color || value is Quaternion)
                     {
                         readOnly = false;
                     }
@@ -623,7 +631,6 @@ namespace UdonVarViewer
 
             if (type == typeof(Vector3))    return EditorGUILayout.Vector3Field(label, (Vector3)val);
             if (type == typeof(Vector2))    return EditorGUILayout.Vector2Field(label, (Vector2)val);
-            if (type.IsEnum)                return EditorGUILayout.EnumPopup(string.IsNullOrEmpty(label) ? "Enum" : label, (Enum)val);
             if (type == typeof(Color))      return EditorGUILayout.ColorField(label, (Color)val);
             if (type == typeof(bool))       return EditorGUILayout.Toggle(label, (bool)val);
             if (type == typeof(int))        return EditorGUILayout.IntField(label, (int)val);
