@@ -307,7 +307,7 @@ namespace UdonVarViewer
             if (!set.IsLoaded)
             {
                 if (GUILayout.Button("Load", EditorStyles.miniButton,
-                    GUILayout.Width(45), GUILayout.Height(20)))
+                    GUILayout.Width(60), GUILayout.Height(20)))
                 {
                     LoadSingleBehaviour(set);
                 }
@@ -316,7 +316,7 @@ namespace UdonVarViewer
             // Save This
             EditorGUI.BeginDisabledGroup(!set.IsDirty || !set.IsLoaded);
             if (GUILayout.Button("Save", EditorStyles.miniButton,
-                GUILayout.Width(40), GUILayout.Height(20)))
+                GUILayout.Width(55), GUILayout.Height(20)))
             {
                 SaveSingleBehaviour(set);
             }
@@ -325,7 +325,7 @@ namespace UdonVarViewer
             // Export
             EditorGUI.BeginDisabledGroup(!set.IsLoaded || set.Table == null);
             if (GUILayout.Button("Export", EditorStyles.miniButton,
-                GUILayout.Width(48), GUILayout.Height(20)))
+                GUILayout.Width(65), GUILayout.Height(20)))
             {
                 ExportSingleBehaviour(set);
             }
@@ -333,7 +333,7 @@ namespace UdonVarViewer
 
             // Select in Hierarchy
             if (GUILayout.Button("Select", EditorStyles.miniButton,
-                GUILayout.Width(46), GUILayout.Height(20)))
+                GUILayout.Width(60), GUILayout.Height(20)))
             {
                 if (set.IsValid)
                 {
