@@ -255,6 +255,12 @@ namespace UdonVarViewer
                 foreach (var s in behaviourSets) s.IsExpanded = true;
             }
 
+            // Copy JSON
+            if (GUILayout.Button("Copy", GUILayout.Width(55), GUILayout.Height(24)))
+            {
+                CopyToClipboard();
+            }
+
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.Space(2);
             EditorGUILayout.EndVertical();
@@ -767,6 +773,85 @@ namespace UdonVarViewer
         private void Log(string msg, LogLevel level = LogLevel.Info)
         {
             UdonVarViewerUtility.AddLog(logEntries, msg, level);
+        }
+
+        // ─── Copy to Clipboard (JSON) ─────────────────────────────────
+
+        [Serializable]
+        private class CopyData
+        {
+            public List<CopyBehaviour> behaviours = new List<CopyBehaviour>();
+        }
+
+        [Serializable]
+        private class CopyBehaviour
+        {
+            public string name;
+            public string path;
+            public bool   loaded;
+            public int    variableCount;
+            public List<CopyVariable> variables = new List<CopyVariable>();
+        }
+
+        [Serializable]
+        private class CopyVariable
+        {
+            public string name;
+            public string type;
+            public string value;
+        }
+
+        private void CopyToClipboard()
+        {
+            List<BehaviourVariableSet> targets;
+
+            if (!string.IsNullOrEmpty(searchFilter) && searchMatchIndices.Count > 0)
+            {
+                targets = new List<BehaviourVariableSet>();
+                foreach (int idx in searchMatchIndices)
+                    targets.Add(behaviourSets[idx]);
+            }
+            else if (!string.IsNullOrEmpty(searchFilter) && searchMatchIndices.Count == 0)
+            {
+                SetStatus(toolState, "No search results to copy.");
+                return;
+            }
+            else
+            {
+                targets = behaviourSets;
+            }
+
+            var data = new CopyData();
+            foreach (var set in targets)
+            {
+                var cb = new CopyBehaviour
+                {
+                    name          = set.DisplayName,
+                    path          = set.GameObjectPath,
+                    loaded        = set.IsLoaded,
+                    variableCount = set.Variables.Count,
+                };
+
+                if (set.IsLoaded)
+                {
+                    foreach (var v in set.Variables)
+                    {
+                        cb.variables.Add(new CopyVariable
+                        {
+                            name  = v.Name,
+                            type  = v.TypeName,
+                            value = v.ValueDisplay,
+                        });
+                    }
+                }
+
+                data.behaviours.Add(cb);
+            }
+
+            string json = JsonUtility.ToJson(data, true);
+            GUIUtility.systemCopyBuffer = json;
+            SetStatus(ToolState.Saved, $"Copied {targets.Count} behaviour(s) as JSON to clipboard.");
+            Log($"Copied {targets.Count} behaviour(s) to clipboard ({json.Length} chars).");
         }
     }
 }
