@@ -235,11 +235,7 @@ namespace UdonVarViewer
         {
             if (currentSet == null || currentSet.Variables.Count == 0) return;
 
-            float topUsed = 200f;
-            float listH   = Mathf.Max(120f, position.height - topUsed - (showDebugLog ? 130f : 10f));
-
-            variableScroll = EditorGUILayout.BeginScrollView(
-                variableScroll, GUILayout.Height(listH));
+            variableScroll = EditorGUILayout.BeginScrollView(variableScroll);
 
             bool anyVisible = false;
             foreach (var v in currentSet.Variables)

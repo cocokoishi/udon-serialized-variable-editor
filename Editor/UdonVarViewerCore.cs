@@ -709,9 +709,9 @@ namespace UdonVarViewer
         {
             var result = new List<UdonBehaviour>();
 #if UNITY_2023_1_OR_NEWER
-            var behaviours = UnityEngine.Object.FindObjectsByType<UdonBehaviour>(FindObjectsSortMode.None);
+            var behaviours = UnityEngine.Object.FindObjectsByType<UdonBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 #else
-            var behaviours = UnityEngine.Object.FindObjectsOfType<UdonBehaviour>();
+            var behaviours = UnityEngine.Object.FindObjectsOfType<UdonBehaviour>(true);
 #endif
             if (behaviours != null)
                 result.AddRange(behaviours);

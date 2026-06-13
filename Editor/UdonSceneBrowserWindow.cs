@@ -236,10 +236,7 @@ namespace UdonVarViewer
 
             var styles = UdonVarViewerUtility.Styles;
 
-            float topUsed = 220f;
-            float listH   = Mathf.Max(120f, position.height - topUsed - (showDebugLog ? 130f : 10f));
-
-            mainScroll = EditorGUILayout.BeginScrollView(mainScroll, GUILayout.Height(listH));
+            mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
 
             var listToShow = filteredSets.Count > 0 || !string.IsNullOrEmpty(searchFilter)
                 ? filteredSets : behaviourSets;
