@@ -102,6 +102,7 @@ namespace UdonVarViewer
             {
                 fontStyle = FontStyle.Bold,
                 fontSize  = 12,
+                richText  = true,
             };
             TypeBadge = new GUIStyle(EditorStyles.miniLabel)
             {
@@ -148,6 +149,7 @@ namespace UdonVarViewer
             {
                 normal   = { textColor = new Color(0.5f, 0.5f, 0.5f) },
                 wordWrap = false,
+                richText = true,
             };
         }
 
@@ -184,6 +186,23 @@ namespace UdonVarViewer
                 return _styles;
             }
         }
+
+        // ─── Search Utility ───────────────────────────────────────────────
+        public static string HighlightText(string text, string filter)
+        {
+            if (string.IsNullOrEmpty(filter) || string.IsNullOrEmpty(text)) return text;
+            try
+            {
+                return System.Text.RegularExpressions.Regex.Replace(
+                    text,
+                    System.Text.RegularExpressions.Regex.Escape(filter),
+                    "<color=#FFFF00><b>$&</b></color>",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                );
+            }
+            catch { return text; }
+        }
+
 
         // ═════════════════════════════════════════════════════════════════
         //  Reflection
@@ -323,20 +342,49 @@ namespace UdonVarViewer
                 log?.Invoke($"Serialized {bytes.Length} bytes, {unityObjects?.Count ?? 0} Unity Objects.",
                     LogLevel.Info);
 
-                Undo.RecordObject(set.Behaviour, "Edit Udon Variables");
-
-                if (!SetField(set.Behaviour, FIELD_SERIALIZED_BYTES, base64))
+                SerializedObject so = new SerializedObject(set.Behaviour);
+                
+                var bytesProp = so.FindProperty(FIELD_SERIALIZED_BYTES);
+                if (bytesProp != null)
                 {
-                    log?.Invoke("CRITICAL: failed to write serialized bytes — data NOT saved!", LogLevel.Error);
+                    bytesProp.stringValue = base64;
+                }
+                else
+                {
+                    log?.Invoke($"CRITICAL: failed to find SerializedProperty '{FIELD_SERIALIZED_BYTES}' — data NOT saved!", LogLevel.Error);
                     return false;
                 }
-                if (!SetField(set.Behaviour, FIELD_UNITY_OBJECTS, unityObjects))
+
+                var objsProp = so.FindProperty(FIELD_UNITY_OBJECTS);
+                if (objsProp != null)
                 {
-                    log?.Invoke("CRITICAL: failed to write Unity objects — references NOT saved!", LogLevel.Error);
+                    int count = unityObjects != null ? unityObjects.Count : 0;
+                    objsProp.arraySize = count;
+                    for (int i = 0; i < count; i++)
+                    {
+                        objsProp.GetArrayElementAtIndex(i).objectReferenceValue = unityObjects[i];
+                    }
+                }
+                else
+                {
+                    log?.Invoke($"CRITICAL: failed to find SerializedProperty '{FIELD_UNITY_OBJECTS}' — references NOT saved!", LogLevel.Error);
                     return false;
                 }
 
-                EditorUtility.SetDirty(set.Behaviour);
+                so.ApplyModifiedProperties();
+                
+                // Force UdonBehaviour to re-parse the base64 string into its memory cache immediately
+                if (set.Behaviour is ISerializationCallbackReceiver receiver)
+                {
+                    try
+                    {
+                        receiver.OnAfterDeserialize();
+                    }
+                    catch (Exception ex)
+                    {
+                        log?.Invoke($"Warning: OnAfterDeserialize threw an exception (Cache might not refresh): {ex.Message}", LogLevel.Warning);
+                    }
+                }
                 set.IsDirty        = false;
                 set.OriginalBase64 = base64;
                 set.UnityObjects   = unityObjects;
@@ -650,7 +698,7 @@ namespace UdonVarViewer
 
         /// <summary>Draw a single editable variable entry (header + value field).</summary>
         /// <returns>True if the value was changed by the user.</returns>
-        public static bool DrawVariableEntry(EditableVariable v)
+        public static bool DrawVariableEntry(EditableVariable v, string searchFilter = "")
         {
             var styles = Styles;
             bool changed = false;
@@ -659,8 +707,10 @@ namespace UdonVarViewer
 
             // ── Header row ──
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(v.Name, styles.VarName);
-            EditorGUILayout.LabelField(v.TypeName, styles.TypeBadge);
+            string dispName = HighlightText(v.Name, searchFilter);
+            string dispType = HighlightText(v.TypeName, searchFilter);
+            EditorGUILayout.LabelField(dispName, styles.VarName);
+            EditorGUILayout.LabelField(dispType, styles.TypeBadge);
             EditorGUILayout.EndHorizontal();
 
             // ── Value row ──

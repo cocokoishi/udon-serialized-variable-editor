@@ -20,7 +20,12 @@ namespace UdonVarViewer
         // ─────────────────────────────────────────────────────────────────
 
         private List<BehaviourVariableSet> behaviourSets = new List<BehaviourVariableSet>();
-        private List<BehaviourVariableSet> filteredSets  = new List<BehaviourVariableSet>();
+
+        // Search State (Find-on-Page mode)
+        private List<int> searchMatchIndices   = new List<int>();
+        private int       currentMatchIndex    = -1;
+        private bool      scrollToCurrentMatch = false;
+        private Dictionary<int, Rect> cardRects = new Dictionary<int, Rect>();
 
         // UI
         private string  searchFilter  = "";
@@ -66,7 +71,8 @@ namespace UdonVarViewer
         {
             EditorApplication.hierarchyChanged -= OnHierarchyChanged;
             behaviourSets.Clear();
-            filteredSets.Clear();
+            searchMatchIndices.Clear();
+            cardRects.Clear();
         }
 
         private void OnHierarchyChanged()
@@ -141,13 +147,36 @@ namespace UdonVarViewer
             EditorGUI.BeginChangeCheck();
             searchFilter = EditorGUILayout.TextField(searchFilter, EditorStyles.toolbarSearchField);
             if (EditorGUI.EndChangeCheck())
-                RebuildFilteredList();
+                UpdateSearchMatches();
 
-            if (!string.IsNullOrEmpty(searchFilter) &&
-                GUILayout.Button("✕", EditorStyles.toolbarButton, GUILayout.Width(22)))
+            if (!string.IsNullOrEmpty(searchFilter))
             {
-                searchFilter = "";
-                RebuildFilteredList();
+                if (searchMatchIndices.Count > 0)
+                {
+                    GUILayout.Label($"{currentMatchIndex + 1} of {searchMatchIndices.Count}", EditorStyles.miniLabel);
+                    if (GUILayout.Button("↑", EditorStyles.toolbarButton, GUILayout.Width(22)))
+                    {
+                        currentMatchIndex = (currentMatchIndex - 1 + searchMatchIndices.Count) % searchMatchIndices.Count;
+                        scrollToCurrentMatch = true;
+                        behaviourSets[searchMatchIndices[currentMatchIndex]].IsExpanded = true;
+                    }
+                    if (GUILayout.Button("↓", EditorStyles.toolbarButton, GUILayout.Width(22)))
+                    {
+                        currentMatchIndex = (currentMatchIndex + 1) % searchMatchIndices.Count;
+                        scrollToCurrentMatch = true;
+                        behaviourSets[searchMatchIndices[currentMatchIndex]].IsExpanded = true;
+                    }
+                }
+                else
+                {
+                    GUILayout.Label("0 of 0", EditorStyles.miniLabel);
+                }
+
+                if (GUILayout.Button("✕", EditorStyles.toolbarButton, GUILayout.Width(22)))
+                {
+                    searchFilter = "";
+                    UpdateSearchMatches();
+                }
             }
             EditorGUILayout.EndHorizontal();
 
@@ -238,33 +267,52 @@ namespace UdonVarViewer
 
             mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
 
-            var listToShow = filteredSets.Count > 0 || !string.IsNullOrEmpty(searchFilter)
-                ? filteredSets : behaviourSets;
+            var listToShow = behaviourSets;
 
             if (listToShow.Count == 0)
             {
-                if (!string.IsNullOrEmpty(searchFilter))
-                    EditorGUILayout.LabelField($"No behaviours match \"{searchFilter}\".",
-                        EditorStyles.centeredGreyMiniLabel);
-                else
-                    EditorGUILayout.LabelField("No UdonBehaviours found in scene.",
-                        EditorStyles.centeredGreyMiniLabel);
+                EditorGUILayout.LabelField("No UdonBehaviours found in scene.",
+                    EditorStyles.centeredGreyMiniLabel);
             }
 
-            foreach (var set in listToShow)
+            for (int i = 0; i < listToShow.Count; i++)
             {
-                DrawBehaviourCard(set);
+                var set = listToShow[i];
+                bool isCurrentMatch = searchMatchIndices.Count > 0 && searchMatchIndices[currentMatchIndex] == i;
+
+                EditorGUILayout.BeginVertical();
+                DrawBehaviourCard(set, isCurrentMatch);
+                EditorGUILayout.EndVertical();
+
+                if (Event.current.type == EventType.Repaint)
+                {
+                    cardRects[i] = GUILayoutUtility.GetLastRect();
+
+                    if (scrollToCurrentMatch && isCurrentMatch)
+                    {
+                        Rect r = cardRects[i];
+                        if (r.height > 0)
+                        {
+                            mainScroll.y = Mathf.Max(0, r.y - 40); // Scroll slightly above the card
+                            scrollToCurrentMatch = false;
+                            Repaint(); // Force immediately applying the scroll
+                        }
+                    }
+                }
             }
 
             EditorGUILayout.EndScrollView();
         }
 
-        private void DrawBehaviourCard(BehaviourVariableSet set)
+        private void DrawBehaviourCard(BehaviourVariableSet set, bool isCurrentMatch)
         {
             var styles = UdonVarViewerUtility.Styles;
 
-            // Outer card box
+            // Outer card box - tint yellow if it's the current search match
+            var prevColor = GUI.backgroundColor;
+            if (isCurrentMatch) GUI.backgroundColor = new Color(1f, 1f, 0.4f, 1f);
             EditorGUILayout.BeginVertical(styles.VarBox);
+            if (isCurrentMatch) GUI.backgroundColor = prevColor;
 
             // ── Header row ──
             EditorGUILayout.BeginHorizontal();
@@ -274,6 +322,7 @@ namespace UdonVarViewer
 
             // Name
             string displayName = set.IsValid ? set.DisplayName : "(destroyed)";
+            displayName = UdonVarViewerUtility.HighlightText(displayName, searchFilter);
             GUILayout.Label(displayName, styles.VarName, GUILayout.MinWidth(60));
 
             // Dirty badge
@@ -289,7 +338,8 @@ namespace UdonVarViewer
             // ── Path row ──
             if (set.IsValid)
             {
-                EditorGUILayout.LabelField(set.GameObjectPath, styles.PathLabel);
+                string dispPath = UdonVarViewerUtility.HighlightText(set.GameObjectPath, searchFilter);
+                EditorGUILayout.LabelField(dispPath, styles.PathLabel);
             }
 
             // ── Button row ──
@@ -369,13 +419,9 @@ namespace UdonVarViewer
 
             foreach (var v in set.Variables)
             {
-                // Apply search filter to variables too
-                if (!string.IsNullOrEmpty(searchFilter) &&
-                    !UdonVarViewerUtility.MatchesFilter(v.Name, searchFilter) &&
-                    !UdonVarViewerUtility.MatchesFilter(v.TypeName, searchFilter))
-                    continue;
-
-                if (UdonVarViewerUtility.DrawVariableEntry(v))
+                // We no longer filter out variables to preserve context.
+                // We just pass the searchFilter to highlight matching text!
+                if (UdonVarViewerUtility.DrawVariableEntry(v, searchFilter))
                 {
                     set.IsDirty = true;
                     if (toolState != ToolState.Modified)
@@ -393,7 +439,8 @@ namespace UdonVarViewer
         private void ScanScene()
         {
             behaviourSets.Clear();
-            filteredSets.Clear();
+            searchMatchIndices.Clear();
+            cardRects.Clear();
 
             Log("Scanning scene for UdonBehaviours…");
 
@@ -452,7 +499,7 @@ namespace UdonVarViewer
                 EditorUtility.ClearProgressBar();
 
             hasScanned = true;
-            RebuildFilteredList();
+            UpdateSearchMatches();
 
             string msg = $"Scanned: {allBehaviours.Count} behaviours, {loadedCount} loaded";
             if (errorCount > 0) msg += $", {errorCount} errors";
@@ -472,7 +519,7 @@ namespace UdonVarViewer
             {
                 newSet.IsExpanded = set.IsExpanded;
                 behaviourSets[idx] = newSet;
-                RebuildFilteredList();
+                UpdateSearchMatches();
             }
 
             if (newSet.IsLoaded)
@@ -589,23 +636,22 @@ namespace UdonVarViewer
         //  Filtering
         // ─────────────────────────────────────────────────────────────────
 
-        private void RebuildFilteredList()
+        private void UpdateSearchMatches()
         {
-            filteredSets.Clear();
+            searchMatchIndices.Clear();
+            currentMatchIndex = -1;
 
-            if (string.IsNullOrEmpty(searchFilter))
-            {
-                // No filter — show all
-                return;
-            }
+            if (string.IsNullOrEmpty(searchFilter)) return;
 
-            foreach (var set in behaviourSets)
+            for (int i = 0; i < behaviourSets.Count; i++)
             {
+                var set = behaviourSets[i];
+
                 // Match behaviour name or path
                 if (UdonVarViewerUtility.MatchesFilter(set.DisplayName, searchFilter) ||
                     UdonVarViewerUtility.MatchesFilter(set.GameObjectPath, searchFilter))
                 {
-                    filteredSets.Add(set);
+                    searchMatchIndices.Add(i);
                     continue;
                 }
 
@@ -624,9 +670,17 @@ namespace UdonVarViewer
                     }
                     if (anyVarMatch)
                     {
-                        filteredSets.Add(set);
+                        searchMatchIndices.Add(i);
                     }
                 }
+            }
+
+            if (searchMatchIndices.Count > 0)
+            {
+                currentMatchIndex = 0;
+                scrollToCurrentMatch = true;
+                // Auto-expand the first match so the user sees inside
+                behaviourSets[searchMatchIndices[0]].IsExpanded = true;
             }
         }
 
