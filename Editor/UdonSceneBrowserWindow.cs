@@ -27,6 +27,10 @@ namespace UdonVarViewer
         private bool      scrollToCurrentMatch = false;
         private Dictionary<int, Rect> cardRects = new Dictionary<int, Rect>();
 
+        // Pagination State
+        private int currentPage = 0;
+        private int itemsPerPage = 100;
+
         // UI
         private string  searchFilter  = "";
         private string  guidInput     = "";
@@ -94,6 +98,7 @@ namespace UdonVarViewer
             DrawToolbar();
             DrawGuidLookup();
             DrawBatchActions();
+            DrawPagination();
 
             EditorGUILayout.Space(2);
 
@@ -157,14 +162,12 @@ namespace UdonVarViewer
                     if (GUILayout.Button("↑", EditorStyles.toolbarButton, GUILayout.Width(22)))
                     {
                         currentMatchIndex = (currentMatchIndex - 1 + searchMatchIndices.Count) % searchMatchIndices.Count;
-                        scrollToCurrentMatch = true;
-                        behaviourSets[searchMatchIndices[currentMatchIndex]].IsExpanded = true;
+                        JumpToMatch(currentMatchIndex);
                     }
                     if (GUILayout.Button("↓", EditorStyles.toolbarButton, GUILayout.Width(22)))
                     {
                         currentMatchIndex = (currentMatchIndex + 1) % searchMatchIndices.Count;
-                        scrollToCurrentMatch = true;
-                        behaviourSets[searchMatchIndices[currentMatchIndex]].IsExpanded = true;
+                        JumpToMatch(currentMatchIndex);
                     }
                 }
                 else
@@ -257,6 +260,48 @@ namespace UdonVarViewer
             EditorGUILayout.EndVertical();
         }
 
+        // ─── Pagination ──────────────────────────────────────────────────
+
+        private void DrawPagination()
+        {
+            if (behaviourSets.Count == 0) return;
+
+            int totalPages = Mathf.CeilToInt((float)behaviourSets.Count / itemsPerPage);
+            if (totalPages == 0) totalPages = 1;
+
+            if (currentPage >= totalPages) currentPage = Mathf.Max(0, totalPages - 1);
+            if (currentPage < 0) currentPage = 0;
+
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            GUILayout.FlexibleSpace();
+
+            EditorGUI.BeginDisabledGroup(currentPage == 0);
+            if (GUILayout.Button("|<", EditorStyles.toolbarButton, GUILayout.Width(25))) currentPage = 0;
+            if (GUILayout.Button("<", EditorStyles.toolbarButton, GUILayout.Width(25))) currentPage--;
+            EditorGUI.EndDisabledGroup();
+
+            GUILayout.Space(10);
+            GUILayout.Label($"Page {currentPage + 1} of {totalPages}  ({behaviourSets.Count} total)", EditorStyles.miniLabel);
+            GUILayout.Space(10);
+
+            EditorGUI.BeginDisabledGroup(currentPage >= totalPages - 1);
+            if (GUILayout.Button(">", EditorStyles.toolbarButton, GUILayout.Width(25))) currentPage++;
+            if (GUILayout.Button(">|", EditorStyles.toolbarButton, GUILayout.Width(25))) currentPage = totalPages - 1;
+            EditorGUI.EndDisabledGroup();
+
+            GUILayout.Space(20);
+            GUILayout.Label("Per page:", EditorStyles.miniLabel);
+            int newPerPage = EditorGUILayout.IntField(itemsPerPage, GUILayout.Width(40));
+            if (newPerPage != itemsPerPage && newPerPage > 0)
+            {
+                itemsPerPage = newPerPage;
+                currentPage = 0;
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+        }
+
         // ─── Behaviour List ──────────────────────────────────────────────
 
         private void DrawBehaviourList()
@@ -265,17 +310,27 @@ namespace UdonVarViewer
 
             var styles = UdonVarViewerUtility.Styles;
 
-            mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
-
             var listToShow = behaviourSets;
 
             if (listToShow.Count == 0)
             {
                 EditorGUILayout.LabelField("No UdonBehaviours found in scene.",
                     EditorStyles.centeredGreyMiniLabel);
+                return;
             }
 
-            for (int i = 0; i < listToShow.Count; i++)
+            // Pagination boundaries
+            int totalItems = listToShow.Count;
+            int totalPages = Mathf.CeilToInt((float)totalItems / itemsPerPage);
+            if (currentPage >= totalPages) currentPage = Mathf.Max(0, totalPages - 1);
+            if (currentPage < 0) currentPage = 0;
+
+            int startIndex = currentPage * itemsPerPage;
+            int endIndex = Mathf.Min(startIndex + itemsPerPage, totalItems);
+
+            mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
+
+            for (int i = startIndex; i < endIndex; i++)
             {
                 var set = listToShow[i];
                 bool isCurrentMatch = searchMatchIndices.Count > 0 && searchMatchIndices[currentMatchIndex] == i;
@@ -678,10 +733,24 @@ namespace UdonVarViewer
             if (searchMatchIndices.Count > 0)
             {
                 currentMatchIndex = 0;
-                scrollToCurrentMatch = true;
-                // Auto-expand the first match so the user sees inside
-                behaviourSets[searchMatchIndices[0]].IsExpanded = true;
+                JumpToMatch(0);
             }
+        }
+
+        private void JumpToMatch(int matchListIndex)
+        {
+            if (matchListIndex < 0 || matchListIndex >= searchMatchIndices.Count) return;
+            
+            int globalItemIndex = searchMatchIndices[matchListIndex];
+            behaviourSets[globalItemIndex].IsExpanded = true;
+            
+            int targetPage = globalItemIndex / itemsPerPage;
+            if (currentPage != targetPage)
+            {
+                currentPage = targetPage;
+            }
+            
+            scrollToCurrentMatch = true;
         }
 
         // ─────────────────────────────────────────────────────────────────
