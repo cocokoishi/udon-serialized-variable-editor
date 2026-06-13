@@ -25,6 +25,8 @@ namespace UdonVarViewer
         private List<int> searchMatchIndices   = new List<int>();
         private int       currentMatchIndex    = -1;
         private bool      scrollToCurrentMatch = false;
+        private bool      includeValuesInSearch = false;
+        private bool      exactMatch          = false;
         private Dictionary<int, Rect> cardRects = new Dictionary<int, Rect>();
 
         // Pagination State
@@ -147,7 +149,21 @@ namespace UdonVarViewer
             // Search bar
             EditorGUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Label("🔎", GUILayout.Width(20));
+            if (GUILayout.Button(EditorGUIUtility.IconContent("Search Icon"), EditorStyles.toolbarButton, GUILayout.Width(26)))
+            {
+                var menu = new GenericMenu();
+                menu.AddItem(new GUIContent("Include Values"), includeValuesInSearch, () =>
+                {
+                    includeValuesInSearch = !includeValuesInSearch;
+                    UpdateSearchMatches();
+                });
+                menu.AddItem(new GUIContent("Exact Match"), exactMatch, () =>
+                {
+                    exactMatch = !exactMatch;
+                    UpdateSearchMatches();
+                });
+                menu.ShowAsContext();
+            }
 
             EditorGUI.BeginChangeCheck();
             searchFilter = EditorGUILayout.TextField(searchFilter, EditorStyles.toolbarSearchField);
@@ -709,8 +725,8 @@ namespace UdonVarViewer
                 var set = behaviourSets[i];
 
                 // Match behaviour name or path
-                if (UdonVarViewerUtility.MatchesFilter(set.DisplayName, searchFilter) ||
-                    UdonVarViewerUtility.MatchesFilter(set.GameObjectPath, searchFilter))
+                if (MatchFilter(set.DisplayName, searchFilter) ||
+                    MatchFilter(set.GameObjectPath, searchFilter))
                 {
                     searchMatchIndices.Add(i);
                     continue;
@@ -722,8 +738,9 @@ namespace UdonVarViewer
                     bool anyVarMatch = false;
                     foreach (var v in set.Variables)
                     {
-                        if (UdonVarViewerUtility.MatchesFilter(v.Name, searchFilter) ||
-                            UdonVarViewerUtility.MatchesFilter(v.TypeName, searchFilter))
+                        if (MatchFilter(v.Name, searchFilter) ||
+                            MatchFilter(v.TypeName, searchFilter) ||
+                            (includeValuesInSearch && MatchFilter(v.ValueDisplay, searchFilter)))
                         {
                             anyVarMatch = true;
                             break;
@@ -757,6 +774,15 @@ namespace UdonVarViewer
             }
             
             scrollToCurrentMatch = true;
+        }
+
+        private bool MatchFilter(string text, string filter)
+        {
+            if (string.IsNullOrEmpty(filter)) return true;
+            if (string.IsNullOrEmpty(text))   return false;
+            if (exactMatch)
+                return string.Equals(text, filter, StringComparison.OrdinalIgnoreCase);
+            return text.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         // ─────────────────────────────────────────────────────────────────
