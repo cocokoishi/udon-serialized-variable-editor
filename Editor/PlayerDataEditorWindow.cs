@@ -347,7 +347,7 @@ namespace UdonVarViewer
             if (f.FileName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (f.WorldName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             if (f.PlayerId.ToString().IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            return RawFileContains(f, filter);
+            return false;
         }
 
         // ── FileGroup 结构 ──────────────────────────────────────────────────────
@@ -634,19 +634,26 @@ namespace UdonVarViewer
 
             foreach (var f in Directory.GetFiles(playerDataPath, "PlayerData_*.json"))
             {
-                string name  = Path.GetFileNameWithoutExtension(f);
-                string[] parts = name.Split('_');
-                if (parts.Length < 3) continue;
-                if (!int.TryParse(parts[1], out int pid)) continue;
-
-                records.Add(new PlayerDataRecord
+                try
                 {
-                    FilePath      = f,
-                    FileName      = Path.GetFileName(f),
-                    PlayerId      = pid,
-                    WorldName     = string.Join("_", parts.Skip(2)),
-                    LastWriteTime = File.GetLastWriteTime(f)
-                });
+                    string name  = Path.GetFileNameWithoutExtension(f);
+                    string[] parts = name.Split('_');
+                    if (parts.Length < 3) continue;
+                    if (!int.TryParse(parts[1], out int pid)) continue;
+
+                    records.Add(new PlayerDataRecord
+                    {
+                        FilePath      = f,
+                        FileName      = Path.GetFileName(f),
+                        PlayerId      = pid,
+                        WorldName     = string.Join("_", parts.Skip(2)),
+                        LastWriteTime = File.GetLastWriteTime(f)
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log($"Skipping \"{Path.GetFileName(f)}\": {ex.Message}", LogLevel.Warning);
+                }
             }
 
             SetStatus(ToolState.Loaded, $"Found {records.Count} data files.");
@@ -673,7 +680,6 @@ namespace UdonVarViewer
             try
             {
                 File.WriteAllText(rec.FilePath, rec.RawJson.ToString(Formatting.Indented));
-                rec.LastWriteTime = File.GetLastWriteTime(rec.FilePath);
                 rec.IsDirty       = false;
                 rec.ReloadFields();
                 Log($"Saved: {rec.FileName}", LogLevel.Info);
@@ -706,7 +712,6 @@ namespace UdonVarViewer
             valObj["type"]  = type;
             valObj["value"] = ObjectToToken(newVal, type);
             entry["Value"]       = valObj;
-            entry["LastUpdated"] = DateTimeOffset.Now.ToString("o");
 
             selectedRecord.IsDirty = true;
             MarkStatus();
@@ -728,6 +733,13 @@ namespace UdonVarViewer
                 return;
 
             string vName = newVarName.Trim();
+            if (selectedRecord.RawJson[vName] != null)
+            {
+                if (!EditorUtility.DisplayDialog("Duplicate Variable",
+                    $"Variable \"{vName}\" already exists. Overwrite?", "Overwrite", "Cancel"))
+                    return;
+            }
+
             string vType = VarTypeNames[newVarTypeIdx];
             newVarName   = "";
 
@@ -785,17 +797,6 @@ namespace UdonVarViewer
             if (val == null) return false;
             return val.ToString()
                 .IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        private static bool RawFileContains(PlayerDataRecord rec, string filter)
-        {
-            if (rec == null || string.IsNullOrEmpty(rec.FilePath)) return false;
-            try
-            {
-                return File.ReadAllText(rec.FilePath)
-                    .IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
-            }
-            catch { return false; }
         }
 
         // ═══════════════════════════════════════════════════════════════════════
