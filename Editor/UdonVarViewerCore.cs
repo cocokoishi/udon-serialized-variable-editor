@@ -513,7 +513,8 @@ namespace UdonVarViewer
                     if (value == null ||
                         value is string || value is long || value is int ||
                         value is double || value is float || value is bool || value is char ||
-                        value is Vector3 || value is Color || value is Quaternion)
+                        value is Vector3 || value is Vector2 || value is Color || value is Quaternion ||
+                        varType.IsEnum)
                     {
                         readOnly = false;
                     }
@@ -573,6 +574,8 @@ namespace UdonVarViewer
             Type type = val.GetType();
 
             if (type == typeof(Vector3))    return EditorGUILayout.Vector3Field(label, (Vector3)val);
+            if (type == typeof(Vector2))    return EditorGUILayout.Vector2Field(label, (Vector2)val);
+            if (type.IsEnum)                return EditorGUILayout.EnumPopup(string.IsNullOrEmpty(label) ? "Enum" : label, (Enum)val);
             if (type == typeof(Color))      return EditorGUILayout.ColorField(label, (Color)val);
             if (type == typeof(bool))       return EditorGUILayout.Toggle(label, (bool)val);
             if (type == typeof(int))        return EditorGUILayout.IntField(label, (int)val);
@@ -605,8 +608,9 @@ namespace UdonVarViewer
 
         private const int ARRAY_PAGE_SIZE = 100;
 
-        public static object DrawArrayField(EditableVariable v, Array arr)
+        public static object DrawArrayField(EditableVariable v, Array arr, out bool changed)
         {
+            changed = false;
             int totalLen = arr.Length;
             v.IsExpanded = EditorGUILayout.Foldout(v.IsExpanded, $"Array [{totalLen}]", true);
             if (!v.IsExpanded) return arr;
@@ -622,6 +626,7 @@ namespace UdonVarViewer
                 displayCount = ARRAY_PAGE_SIZE;
             }
 
+            EditorGUI.BeginChangeCheck();
             for (int j = 0; j < displayCount; j++)
             {
                 object elem    = arr.GetValue(j);
@@ -629,6 +634,8 @@ namespace UdonVarViewer
                 if (!object.Equals(elem, newElem))
                     arr.SetValue(newElem, j);
             }
+            if (EditorGUI.EndChangeCheck())
+                changed = true;
 
             if (totalLen > ARRAY_PAGE_SIZE)
             {
@@ -665,20 +672,27 @@ namespace UdonVarViewer
             {
                 object currentVal = v.ValueProperty?.GetValue(v.RefObject);
 
-                EditorGUI.BeginChangeCheck();
-
                 object newVal;
                 if (currentVal != null && currentVal.GetType().IsArray)
-                    newVal = DrawArrayField(v, (Array)currentVal);
-                else
-                    newVal = DrawValueField("", currentVal);
-
-                if (EditorGUI.EndChangeCheck())
                 {
-                    v.ValueProperty?.SetValue(v.RefObject, newVal);
-                    if (currentVal != null && !currentVal.GetType().IsArray)
-                        v.ValueDisplay = newVal?.ToString() ?? "null";
-                    changed = true;
+                    newVal = DrawArrayField(v, (Array)currentVal, out bool subChanged);
+                    if (subChanged)
+                    {
+                        v.ValueProperty?.SetValue(v.RefObject, newVal);
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    EditorGUI.BeginChangeCheck();
+                    newVal = DrawValueField("", currentVal);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        v.ValueProperty?.SetValue(v.RefObject, newVal);
+                        if (currentVal != null && !currentVal.GetType().IsArray)
+                            v.ValueDisplay = newVal?.ToString() ?? "null";
+                        changed = true;
+                    }
                 }
             }
 
